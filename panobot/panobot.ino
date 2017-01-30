@@ -28,7 +28,7 @@ int set_hi = 10;
 float set_uds = 0;
 float set_lrs = 0;
 int set_move = 0;
-Servo myservo; 
+Servo servoUD, servoLR; 
 
 void setup() {
 
@@ -37,8 +37,8 @@ void setup() {
 
   pinMode(D4, INPUT_PULLUP);
   display.clearDisplay();
-  myservo.attach(D6);
-  myservo.attach(D5);
+  servoUD.attach(D6);
+  servoLR.attach(D5);
   niceMessage("test");
 }
 
@@ -198,8 +198,10 @@ void setServos() {
   char tmp[8];
   // set_uds = -86 is fully down
   int value = map(set_uds + 90 + 4, 0, 180, 870, 2130);
-  
-  myservo.writeMicroseconds(value);
+  servoUD.writeMicroseconds(value);
+
+  value = map(set_lrs, 0, 390, 870, 2130);
+  servoLR.writeMicroseconds(value);
   
 }
 void capturing() {
