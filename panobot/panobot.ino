@@ -7,6 +7,7 @@
 #include <Servo.h> 
 #include <ArduinoOTA.h>
 #include <Time.h>
+#include <EEPROM.h>
 
 // SCL GPIO5
 // SDA GPIO4
@@ -35,8 +36,96 @@ Servo servoUD, servoLR;
 const char* ssid = "sushi";
 const char* password = "12345687";
 
-void setup() {
+int wifiConnected = 0;
 
+int devmode = 1; // connect wifi first
+
+void ota() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("OTA\nConnecting");
+  display.display();
+    
+  //WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+
+  int trial = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    char tmp[8];
+    display.clearDisplay();
+    display.setCursor(0,0);
+    sprintf(tmp, "%d\n", trial++);
+    display.println(tmp);
+    if (WiFi.status() == WL_NO_SHIELD)
+      display.println("WL_NO_SHIELD");
+    else if (WiFi.status() == WL_IDLE_STATUS)
+      display.println("WL_IDLE_STATUS");
+      else if (WiFi.status() == WL_NO_SSID_AVAIL)
+      display.println("WL_NO_SSID_AVAIL");
+      else if (WiFi.status() == WL_SCAN_COMPLETED)
+      display.println("WL_SCAN_COMPLETED");
+      else if (WiFi.status() == WL_CONNECT_FAILED)
+      display.println("WL_CONNECT_FAILED");
+      else if (WiFi.status() == WL_CONNECTION_LOST)
+      display.println("WL_CONNECTION_LOST");
+      else if (WiFi.status() == WL_DISCONNECTED)
+      display.println("WL_DISCONNECTED");
+    //display.write('.');
+    display.display();
+    //WiFi.begin(ssid, password);
+    //ESP.restart();
+  }
+  
+  //while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  //  Serial.println("Connection Failed! Rebooting...");
+  //  delay(1000);
+  //  ESP.restart();
+   
+  //}
+  
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("OTA\nConnected\n");
+  display.println(WiFi.localIP());
+  display.display();
+  if (devMode == 0) {
+    while (1) {
+      ArduinoOTA.handle();
+      delay(10);
+    }
+  }
+}
+
+
+void setup() {
   Serial.begin(9600);
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
 
@@ -45,6 +134,13 @@ void setup() {
   servoUD.attach(D6);
   servoLR.attach(D5);
   niceMessage("test");
+
+//  uint8_t a = 123;
+ // EEPROM.begin(512);
+  //EEPROM.write(0, a);
+ // niceMessage(EEPROM.read(0));
+ // while(1) ;
+  //ota();
 }
 
 
@@ -269,67 +365,6 @@ void capturing() {
     }
   }
 }
-
-void ota() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("OTA\nConnecting");
-  display.display();
-    
-  //WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    display.write('.');
-    display.display();
-    //ESP.restart();
-  }
-  
-  //while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-  //  Serial.println("Connection Failed! Rebooting...");
-  //  delay(1000);
-  //  ESP.restart();
-   
-  //}
-  
-  ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("OTA\nConnected\n");
-  display.println(WiFi.localIP());
-  display.display();
-  while (1) {
-    ArduinoOTA.handle();
-    delay(10);
-  }
-}
-
 void loop() {
   char tmp[16];
   
