@@ -5,6 +5,7 @@
 #include <pins_arduino.h>
 #include <ESP8266WiFi.h> 
 #include <Servo.h> 
+#include <ArduinoOTA.h>
 #include <Time.h>
 
 // SCL GPIO5
@@ -14,7 +15,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 unsigned long v2_state;
 unsigned long v1_state;
-int menuNum = 9;
+int menuNum = 10;
 int menuId = 0;
 
 int set_hdr = 0;
@@ -29,6 +30,10 @@ float set_uds = 0;
 float set_lrs = 0;
 int set_move = 0;
 Servo servoUD, servoLR; 
+
+
+const char* ssid = "sushi";
+const char* password = "12345687";
 
 void setup() {
 
@@ -134,8 +139,12 @@ void drawMenu() {
   } else if (menuId == 8) {
     drawHeader("LR-S");
     drawNumber(set_lrs);
-  } else {
-    drawHeader("Others");
+  } else if (menuId == 9) {
+    drawHeader("OTA");
+    display.setTextSize(2);
+    display.setCursor(9, 34);
+    display.println("Link");
+    display.fillTriangle(28, 31, 34, 31, 31, 28, WHITE); 
   }
   display.display();
 }
@@ -261,6 +270,66 @@ void capturing() {
   }
 }
 
+void ota() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("OTA\nConnecting");
+  display.display();
+    
+  //WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    display.write('.');
+    display.display();
+    //ESP.restart();
+  }
+  
+  //while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  //  Serial.println("Connection Failed! Rebooting...");
+  //  delay(1000);
+  //  ESP.restart();
+   
+  //}
+  
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("OTA\nConnected\n");
+  display.println(WiFi.localIP());
+  display.display();
+  while (1) {
+    ArduinoOTA.handle();
+    delay(10);
+  }
+}
+
 void loop() {
   char tmp[16];
   
@@ -301,7 +370,7 @@ void loop() {
   }
 
   
-  if (menuId == 0) {
+  if (menuId == 0) { // Capture
     if (up) {
       while (v1 < 400) {
         v1 = analogRead(A0);
@@ -309,7 +378,7 @@ void loop() {
       }
       capturing();
     }
-  } else if (menuId == 1) {
+  } else if (menuId == 1) { // Move
     int change = 0;
      if (down && set_move > 0) {
       set_move--;
@@ -367,8 +436,15 @@ void loop() {
     else if (up && set_lrs < 360)
       set_lrs+= 5;
      setServos();
+  } else if (menuId == 9) { // OTA Update
+    if (up) {
+      while (v1 < 400) {
+        v1 = analogRead(A0);
+        delay(10);
+      }
+      ota();
+    }
   }
-   
   //sprintf(tmp, "%d %d", v1, v2);
   //niceMessage(tmp);
   //delay(1);
