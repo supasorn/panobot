@@ -16,8 +16,21 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 unsigned long v2_state;
 unsigned long v1_state;
-int menuNum = 10;
+
 int menuId = 0;
+int menuOrder[] = {
+  0, // Home
+  1, // Move
+  2, // HDR
+  3, // Row
+  4, // Col
+  //5, // LOW
+  //6, // Hi
+  //7, // UD-S
+  8, // LR-S
+  9  // OTA
+  };
+int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
 
 int set_hdr = 0;
 
@@ -26,12 +39,14 @@ int hdrNum = sizeof(hdr) / sizeof(hdr[0]);
 int set_row = 3;
 int set_col = 6;
 int set_low = 20;
-int set_hi = 10;
-float set_uds = 0;
+int set_hi = 40;
+float set_uds = -90;
 float set_lrs = 0;
 int set_move = 0;
 Servo servoUD, servoLR; 
 
+
+int pwmUD = -1, pwmLR = -1;
 
 const char* ssid = "sushi";
 const char* password = "12345687";
@@ -116,12 +131,13 @@ void ota() {
   display.println("OTA\nConnected\n");
   display.println(WiFi.localIP());
   display.display();
-  if (devMode == 0) {
-    while (1) {
-      ArduinoOTA.handle();
-      delay(10);
-    }
+  while (1) {
+   ArduinoOTA.handle();
+   delay(10);
   }
+  /*if (devMode == 0) {
+    
+  }*/
 }
 
 
@@ -131,10 +147,14 @@ void setup() {
 
   pinMode(D4, INPUT_PULLUP);
   display.clearDisplay();
-  servoUD.attach(D6);
-  servoLR.attach(D5);
+  servoUD.attach(D7);
+  servoLR.attach(D8);
+  setServos();
+
   niceMessage("test");
 
+  pinMode(D5, OUTPUT);
+  pinMode(D6, OUTPUT);
 //  uint8_t a = 123;
  // EEPROM.begin(512);
   //EEPROM.write(0, a);
@@ -205,37 +225,38 @@ void drawMenu() {
   display.setTextColor(WHITE);
   display.clearDisplay();
 
-  if (menuId == 0) {
+  int menu = menuOrder[menuId];
+  if (menu == 0) {
     drawHeader("Home");
     display.setTextSize(2);
     display.setCursor(0, 34);
     display.println("Start");
     display.fillTriangle(28, 33, 34, 33, 31, 30, WHITE); 
-  } else if (menuId == 1) {
+  } else if (menu == 1) {
     drawHeader("Move");
     drawNumber(set_move);
-  } else if (menuId == 2) {
+  } else if (menu == 2) {
     drawHeader("HDR");
     drawNumber(hdr[set_hdr]);
-  } else if (menuId == 3) {
+  } else if (menu == 3) {
     drawHeader("Row");
     drawNumber(set_row);
-  } else if (menuId == 4) {
+  } else if (menu == 4) {
     drawHeader("Col");
     drawNumber(set_col);
-  } else if (menuId == 5) {
+  } else if (menu == 5) {
     drawHeader("Low");
     drawNumber(set_low);
-  } else if (menuId == 6) {
+  } else if (menu == 6) {
     drawHeader("Hi");
     drawNumber(set_hi);
-  } else if (menuId == 7) {
+  } else if (menu == 7) {
     drawHeader("UD-S");
     drawNumber(set_uds);
-  } else if (menuId == 8) {
+  } else if (menu == 8) {
     drawHeader("LR-S");
     drawNumber(set_lrs);
-  } else if (menuId == 9) {
+  } else if (menu == 9) {
     drawHeader("OTA");
     display.setTextSize(2);
     display.setCursor(9, 34);
@@ -245,19 +266,13 @@ void drawMenu() {
   display.display();
 }
 
-int treatValue(int data) {
-  return (data * 9 / 1024) + 48;
-}
-
-
-
 int waiting(int mil) {
   unsigned long wait = millis();
   while (millis() - wait < mil) {
     int v1 = analogRead(A0);
     int v2 = digitalRead(D4);
     if (v1 < 300 || v1 > 700 || v2 == 0) {
-      while (v1 < 300 || v1 > 700 || v2 == 0) {
+      while (v1 < 400 || v1 > 600 || v2 == 0) {
         v1 = analogRead(A0);
         v2 = digitalRead(D4);
         delay(10);
@@ -296,18 +311,86 @@ int waiting(int mil) {
 }
 
 void releaseShutter() {
-  delay(10);
+  digitalWrite(D5, HIGH);
+  digitalWrite(D6, HIGH);
+  delay(1000);
+  digitalWrite(D5, LOW);
+  digitalWrite(D6, LOW);
+}
+
+
+void setServosOld() {
+  char tmp[8];
+  // set_uds = -86 is fully down
+  int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
+  int newPwmLR = map(set_lrs, 0, 390, 870, 2130);
+
+  if (pwmUD == -1) pwmUD = 870;
+  if (pwmLR == -1) pwmLR = 870;
+  int nUD = fabs(newPwmUD - pwmUD) + 1;
+  int nLR = fabs(newPwmLR - pwmLR) + 1;
+  int n = nLR > nUD ? nLR : nUD;
+  
+  for (int i = 0; i < n; i++) {
+    float tUD = 1.0 * i / (nUD - 1);
+    float tLR = 1.0 * i / (nLR - 1);
+    if (tUD > 1) tUD = 1;
+    if (tLR > 1) tLR = 1;
+    servoUD.writeMicroseconds(round(tUD * newPwmUD + (1-tUD) * pwmUD));
+    servoLR.writeMicroseconds(round(tLR * newPwmLR + (1-tLR) * pwmLR));
+    //delayMicroseconds(5000.0 / (2130-870) * 1000);
+    //delayMicroseconds(2380);
+    delay(3);
+  }
+  pwmUD = newPwmUD;
+  pwmLR = newPwmLR;
+  servoUD.writeMicroseconds(pwmUD);
+  servoLR.writeMicroseconds(pwmLR);
 }
 
 void setServos() {
   char tmp[8];
   // set_uds = -86 is fully down
-  int value = map(set_uds + 90 + 4, 0, 180, 870, 2130);
-  servoUD.writeMicroseconds(value);
+  int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
+  int newPwmLR = map(set_lrs, 0, 390, 870, 2130);
 
-  value = map(set_lrs, 0, 390, 870, 2130);
-  servoLR.writeMicroseconds(value);
+  if (pwmUD == -1) pwmUD = 870;
+  if (pwmLR == -1) pwmLR = 870;
+  int n;
+  n = fabs(newPwmUD - pwmUD) + 1;
   
+  for (int i = 0; i < n; i++) {
+    float t;
+    if (n == 1) 
+      t = 1;
+    else
+      t = 1.0 * i / (n - 1);
+    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 4 + 1;
+    servoUD.writeMicroseconds(round(t * newPwmUD + (1-t) * pwmUD));
+   
+    delay(4); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
+    delayMicroseconds(1000 * sc);
+  }
+  
+  n = fabs(newPwmLR - pwmLR) + 1;
+  for (int i = 0; i < n; i++) {
+    float t = 1.0 * i / (n - 1);
+    if (n == 1) 
+      t = 1;
+    else
+      t = 1.0 * i / (n - 1);
+    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 4 + 1;
+    servoLR.writeMicroseconds(round(t * newPwmLR + (1-t) * pwmLR));
+    //delayMicroseconds(round(1000) * sc);
+    delay(8);
+    delayMicroseconds(1000 * sc);
+    
+  }
+  
+  pwmUD = newPwmUD;
+  pwmLR = newPwmLR;
+  //servoUD.writeMicroseconds(pwmUD);
+  //servoLR.writeMicroseconds(pwmLR);
 }
 void capturing() {
   
@@ -333,7 +416,8 @@ void capturing() {
       set_uds = down + (up - down) * 1.0 * y / (set_row - 1);
 
       setServos();
-      waiting(500);
+      int ret = waiting(500);
+      if (ret == -1) return;
       for (int k = 0; k < hdr[set_hdr]; k++) {
         display.clearDisplay();
         display.setTextSize(1);
@@ -404,8 +488,8 @@ void loop() {
     v2_state = 0;
   }
 
-  
-  if (menuId == 0) { // Capture
+  int menu = menuOrder[menuId];
+  if (menu == 0) { // Capture
     if (up) {
       while (v1 < 400) {
         v1 = analogRead(A0);
@@ -413,7 +497,7 @@ void loop() {
       }
       capturing();
     }
-  } else if (menuId == 1) { // Move
+  } else if (menu == 1) { // Move
     int change = 0;
      if (down && set_move > 0) {
       set_move--;
@@ -433,45 +517,55 @@ void loop() {
         set_uds = 90 - set_hi;
       setServos();
     }
-  } else if (menuId == 2) { // HDR
+  } else if (menu == 2) { // HDR
     if (down && set_hdr > 0) {
       set_hdr--;
     } else if (up && set_hdr < hdrNum-1) {
       set_hdr++;
     }
-  } else if (menuId == 3) { // Row
+  } else if (menu == 3) { // Row
     if (down && set_row > 1)
       set_row--;
     else if (up)
       set_row++;
-  } else if (menuId == 4) { // Col
+  } else if (menu == 4) { // Col
     if (down && set_col > 1)
       set_col--;
     else if (up)
       set_col++;
-  } else if (menuId == 5) { // Low
+  } else if (menu == 5) { // Low
     if (down && set_low > 0)
       set_low-= 5;
     else if (up)
       set_low+= 5;
-  } else if (menuId == 6) { // Hi
+  } else if (menu == 6) { // Hi
     if (down && set_hi > 0)
       set_hi-= 5;
     else if (up)
       set_hi+= 5;
-  } else if (menuId == 7) { // uds
-    if (down && set_uds > -90)
+  } else if (menu == 7) { // uds
+    int change = 0;
+    if (down && set_uds > -90) {
       set_uds--;
-    else if (up && set_uds < 90)
+      change = 1;
+    } else if (up && set_uds < 90) {
       set_uds++;
+      change = 1;
+    }
+    if (change)
      setServos();
-  } else if (menuId == 8) { // lrs
-    if (down && set_lrs > 0)
+  } else if (menu == 8) { // lrs
+    int change = 0;
+    if (down && set_lrs > 0) {
       set_lrs-= 5;
-    else if (up && set_lrs < 360)
+      change = 1;
+    } else if (up && set_lrs < 360) {
       set_lrs+= 5;
+      change = 1;
+    }
+    if (change)
      setServos();
-  } else if (menuId == 9) { // OTA Update
+  } else if (menu == 9) { // OTA Update
     if (up) {
       while (v1 < 400) {
         v1 = analogRead(A0);
