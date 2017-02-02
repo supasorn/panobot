@@ -61,6 +61,7 @@ void ota() {
   display.setCursor(0, 0);
   display.println("OTA\nConnecting");
   display.display();
+  //delay(10000);
     
   //WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -70,6 +71,7 @@ void ota() {
   display.setCursor(0,0);
 
   int trial = 0;
+  /*
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     char tmp[8];
@@ -77,32 +79,16 @@ void ota() {
     display.setCursor(0,0);
     sprintf(tmp, "%d\n", trial++);
     display.println(tmp);
-    if (WiFi.status() == WL_NO_SHIELD)
-      display.println("WL_NO_SHIELD");
-    else if (WiFi.status() == WL_IDLE_STATUS)
-      display.println("WL_IDLE_STATUS");
-      else if (WiFi.status() == WL_NO_SSID_AVAIL)
-      display.println("WL_NO_SSID_AVAIL");
-      else if (WiFi.status() == WL_SCAN_COMPLETED)
-      display.println("WL_SCAN_COMPLETED");
-      else if (WiFi.status() == WL_CONNECT_FAILED)
-      display.println("WL_CONNECT_FAILED");
-      else if (WiFi.status() == WL_CONNECTION_LOST)
-      display.println("WL_CONNECTION_LOST");
-      else if (WiFi.status() == WL_DISCONNECTED)
-      display.println("WL_DISCONNECTED");
-    //display.write('.');
     display.display();
-    //WiFi.begin(ssid, password);
+    WiFi.begin(ssid, password);
     //ESP.restart();
-  }
+  }*/
   
-  //while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-  //  Serial.println("Connection Failed! Rebooting...");
-  //  delay(1000);
-  //  ESP.restart();
-   
-  //}
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("Connection Failed! Rebooting...");
+    delay(1000);
+    ESP.restart(); 
+  }
   
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
@@ -122,19 +108,19 @@ void ota() {
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
   ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  //Serial.println("Ready");
+  //Serial.print("IP address: ");
+  //Serial.println(WiFi.localIP());
   
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println("OTA\nConnected\n");
   display.println(WiFi.localIP());
   display.display();
-  while (1) {
-   ArduinoOTA.handle();
-   delay(10);
-  }
+  //while (1) {
+  // ArduinoOTA.handle();
+  // delay(10);
+ // }
   /*if (devMode == 0) {
     
   }*/
@@ -142,16 +128,16 @@ void ota() {
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(9600);  
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
-
-  pinMode(D4, INPUT_PULLUP);
   display.clearDisplay();
+  niceMessage("donotremoved");
+  ota();
+  pinMode(D4, INPUT_PULLUP);
+  
   servoUD.attach(D7);
   servoLR.attach(D8);
   setServos();
-
-  niceMessage("test");
 
   pinMode(D5, OUTPUT);
   pinMode(D6, OUTPUT);
@@ -160,7 +146,7 @@ void setup() {
   //EEPROM.write(0, a);
  // niceMessage(EEPROM.read(0));
  // while(1) ;
-  //ota();
+  
 }
 
 
@@ -194,6 +180,9 @@ void drawHeader(char *str) {
   display.setTextSize(2);
   display.setCursor(0, 0);
   display.println(str);
+
+  if (WiFi.status() == WL_CONNECTED)
+    display.drawRect(62, 0, 2, 2, WHITE);
 }
 
 void drawNumber(int v) {
@@ -313,45 +302,16 @@ int waiting(int mil) {
 void releaseShutter() {
   digitalWrite(D5, HIGH);
   digitalWrite(D6, HIGH);
-  delay(1000);
+  delay(2000);
   digitalWrite(D5, LOW);
   digitalWrite(D6, LOW);
-}
-
-
-void setServosOld() {
-  char tmp[8];
-  // set_uds = -86 is fully down
-  int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
-  int newPwmLR = map(set_lrs, 0, 390, 870, 2130);
-
-  if (pwmUD == -1) pwmUD = 870;
-  if (pwmLR == -1) pwmLR = 870;
-  int nUD = fabs(newPwmUD - pwmUD) + 1;
-  int nLR = fabs(newPwmLR - pwmLR) + 1;
-  int n = nLR > nUD ? nLR : nUD;
-  
-  for (int i = 0; i < n; i++) {
-    float tUD = 1.0 * i / (nUD - 1);
-    float tLR = 1.0 * i / (nLR - 1);
-    if (tUD > 1) tUD = 1;
-    if (tLR > 1) tLR = 1;
-    servoUD.writeMicroseconds(round(tUD * newPwmUD + (1-tUD) * pwmUD));
-    servoLR.writeMicroseconds(round(tLR * newPwmLR + (1-tLR) * pwmLR));
-    //delayMicroseconds(5000.0 / (2130-870) * 1000);
-    //delayMicroseconds(2380);
-    delay(3);
-  }
-  pwmUD = newPwmUD;
-  pwmLR = newPwmLR;
-  servoUD.writeMicroseconds(pwmUD);
-  servoLR.writeMicroseconds(pwmLR);
 }
 
 void setServos() {
   char tmp[8];
   // set_uds = -86 is fully down
-  int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
+  //int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
+  int newPwmUD = map(set_uds + 90, 0, 180, 870, 2135);
   int newPwmLR = map(set_lrs, 0, 390, 870, 2130);
 
   if (pwmUD == -1) pwmUD = 870;
@@ -450,6 +410,8 @@ void capturing() {
   }
 }
 void loop() {
+  ArduinoOTA.handle();
+  
   char tmp[16];
   
   int v1 = analogRead(A0);
