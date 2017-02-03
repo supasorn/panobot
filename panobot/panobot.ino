@@ -27,7 +27,7 @@ int menuOrder[] = {
   //5, // LOW
   //6, // Hi
   //7, // UD-S
-  8, // LR-S
+  8 // LR-S
   //9  // OTA
   };
 int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
@@ -47,21 +47,20 @@ Servo servoUD, servoLR;
 
 
 int pwmUD = -1, pwmLR = -1;
-int useota = 0;
+
 const char* ssid = "sushi";
 const char* password = "12345687";
 
 int wifiConnected = 0;
 
 int devmode = 1; // connect wifi first
-
+int useota = 0;
 void ota() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.println("OTA\nConnecting");
   display.display();
-  //delay(10000);
     
   //WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -132,10 +131,11 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
   display.clearDisplay();
   niceMessage("donotremoved");
+  //delay(1000);
   pinMode(D4, INPUT_PULLUP);
-  if (digitalRead(D4) == 0) {
-    ota();
+  if (analogRead(A0) < 300) {
     useota = 1;
+    ota();
   }
   
   servoUD.attach(D7);
@@ -184,7 +184,7 @@ void drawHeader(char *str) {
   display.setCursor(0, 0);
   display.println(str);
 
-  if (WiFi.status() == WL_CONNECTED)
+  if (useota && WiFi.status() == WL_CONNECTED)
     display.drawRect(62, 0, 2, 2, WHITE);
 }
 
@@ -421,7 +421,6 @@ void loop() {
   int v1 = analogRead(A0);
   int v2 = digitalRead(D4);
   int up = 0, down = 0;
-  
 
   if (v1_state == 0) {
     if (v1 < 300) { 
@@ -443,7 +442,7 @@ void loop() {
     }
   }
 
-  if (v2 == 0 && v1 >= 515-50 && v1 <= 515+50) { // move right
+  if (v2 == 0) { // move right
     if (v2_state == 0) {
       menuId = (menuId + 1) % menuNum;
       v2_state = millis();
@@ -541,27 +540,9 @@ void loop() {
       ota();
     }
   }
-  
   //sprintf(tmp, "%d %d", v1, v2);
   //niceMessage(tmp);
   //delay(1);
   drawMenu();
 }
-/*
-void loop() {
-  // reads the value of the variable resistor 
-  value1 = analogRead(joyPin1);   
-  // this small pause is needed between reading
-  // analog pins, otherwise we get the same value twice
-  delay(100);             
-  // reads the value of the variable resistor 
-  value2 = analogRead(joyPin2);   
-  
-  digitalWrite(ledPin, HIGH);           
-  delay(value1);
-  digitalWrite(ledPin, LOW);
-  delay(value2);
-  Serial.print('J');
-  Serial.print(treatValue(value1));
-  Serial.println(treatValue(value2));
-}*/
+
