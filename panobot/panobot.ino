@@ -28,7 +28,7 @@ int menuOrder[] = {
   //6, // Hi
   //7, // UD-S
   8, // LR-S
-  9  // OTA
+  //9  // OTA
   };
 int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
 
@@ -47,7 +47,7 @@ Servo servoUD, servoLR;
 
 
 int pwmUD = -1, pwmLR = -1;
-
+int useota = 0;
 const char* ssid = "sushi";
 const char* password = "12345687";
 
@@ -132,8 +132,11 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
   display.clearDisplay();
   niceMessage("donotremoved");
-  ota();
   pinMode(D4, INPUT_PULLUP);
+  if (digitalRead(D4) == 0) {
+    ota();
+    useota = 1;
+  }
   
   servoUD.attach(D7);
   servoLR.attach(D8);
@@ -410,13 +413,15 @@ void capturing() {
   }
 }
 void loop() {
-  ArduinoOTA.handle();
+  if (useota)
+    ArduinoOTA.handle();
   
   char tmp[16];
   
   int v1 = analogRead(A0);
   int v2 = digitalRead(D4);
   int up = 0, down = 0;
+  
 
   if (v1_state == 0) {
     if (v1 < 300) { 
@@ -438,14 +443,14 @@ void loop() {
     }
   }
 
-  if (v2 == 0) { // move right
+  if (v2 == 0 && v1 >= 515-50 && v1 <= 515+50) { // move right
     if (v2_state == 0) {
       menuId = (menuId + 1) % menuNum;
       v2_state = millis();
     }
-    if (millis() - v2_state > 400) {
-      menuId = 0;
-    }
+    //if (millis() - v2_state > 400) {
+    //  menuId = 0;
+    //}
   } else {
     v2_state = 0;
   }
@@ -536,6 +541,7 @@ void loop() {
       ota();
     }
   }
+  
   //sprintf(tmp, "%d %d", v1, v2);
   //niceMessage(tmp);
   //delay(1);
