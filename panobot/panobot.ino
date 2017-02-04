@@ -36,10 +36,20 @@ int set_hdr = 0;
 
 int hdr[] = {1, 2, 3, 5, 7, 9};
 int hdrNum = sizeof(hdr) / sizeof(hdr[0]);
-int set_row = 3;
+
+// Sigma
+// int set_low = 20;
+// int set_hi = 40;
+// int set_row = 3;
+// int set_col = 6;
+
+
+// fisheye
+int set_low = 45;
+int set_hi = 45;
+int set_row = 2;
 int set_col = 6;
-int set_low = 20;
-int set_hi = 40;
+
 float set_uds = -90;
 float set_lrs = 0;
 int set_move = 0;
