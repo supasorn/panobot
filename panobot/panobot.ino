@@ -14,8 +14,7 @@
 #define OLED_RESET 0  // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
 
-unsigned long v2_state;
-unsigned long v1_state;
+unsigned long v_state[2];
 
 int menuId = 0;
 int menuOrder[] = {
@@ -26,7 +25,7 @@ int menuOrder[] = {
   4, // Col
   //5, // LOW
   //6, // Hi
-  //7, // UD-S
+  7, // UD-S
   8 // LR-S
   //9  // OTA
   };
@@ -45,8 +44,8 @@ int hdrNum = sizeof(hdr) / sizeof(hdr[0]);
 
 
 // fisheye
-int set_low = 45;
-int set_hi = 45;
+int set_low = 50;
+int set_hi = 75;
 int set_row = 2;
 int set_col = 6;
 
@@ -140,7 +139,7 @@ void setup() {
   Serial.begin(9600);  
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
   display.clearDisplay();
-  niceMessage("donotremoved");
+  niceMessage("Starting");
   //delay(1000);
   pinMode(D4, INPUT_PULLUP);
   if (analogRead(A0) < 300) {
@@ -150,7 +149,8 @@ void setup() {
   
   servoUD.attach(D7);
   servoLR.attach(D8);
-  setServos();
+  //setServos();
+  setServosInstant();
 
   pinMode(D5, OUTPUT);
   pinMode(D6, OUTPUT);
@@ -272,24 +272,24 @@ int waiting(int mil) {
   unsigned long wait = millis();
   while (millis() - wait < mil) {
     int v1 = analogRead(A0);
-    int v2 = digitalRead(D4);
-    if (v1 < 300 || v1 > 700 || v2 == 0) {
-      while (v1 < 400 || v1 > 600 || v2 == 0) {
+  
+    if (v1 < 300 || v1 > 700) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(10, 0);
+      display.println("Stop");
+      display.setCursor(10, 30);
+      display.println("Resm");
+      display.fillTriangle(28, 23, 34, 23, 31, 20, WHITE); 
+//        display.fillRect(28, 23, 7, 1, WHITE);
+      display.fillTriangle(28, 25, 34, 25, 31, 28, WHITE); 
+      display.display();
+        
+      while (v1 < 400 || v1 > 600) {
         v1 = analogRead(A0);
-        v2 = digitalRead(D4);
         delay(10);
       }
       while (true) {
-        display.clearDisplay();
-        display.setTextSize(2);
-        display.setCursor(10, 0);
-        display.println("Stop");
-        display.setCursor(10, 30);
-        display.println("Resm");
-        display.fillTriangle(28, 23, 34, 23, 31, 20, WHITE); 
-//        display.fillRect(28, 23, 7, 1, WHITE);
-        display.fillTriangle(28, 25, 34, 25, 31, 28, WHITE); 
-        display.display();
         delay(10);
         v1 = analogRead(A0);
         if (v1 < 300) { // Stop
@@ -312,14 +312,19 @@ int waiting(int mil) {
   return 0;
 }
 
-void releaseShutter() {
-  digitalWrite(D5, HIGH);
+void releaseShutter(int t) {
+  //digitalWrite(D5, HIGH);
   digitalWrite(D6, HIGH);
-  delay(2000);
-  digitalWrite(D5, LOW);
+  delay(t);
+  //digitalWrite(D5, LOW);
   digitalWrite(D6, LOW);
 }
-
+void setServosInstant() {
+  pwmUD = map(set_uds + 90, 0, 180, 870, 2135);
+  pwmLR = map(set_lrs, 0, 390, 870, 2130);
+  servoUD.writeMicroseconds(pwmUD);
+  servoLR.writeMicroseconds(pwmLR);
+}
 void setServos() {
   char tmp[8];
   // set_uds = -86 is fully down
@@ -338,10 +343,10 @@ void setServos() {
       t = 1;
     else
       t = 1.0 * i / (n - 1);
-    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 4 + 1;
+    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
     servoUD.writeMicroseconds(round(t * newPwmUD + (1-t) * pwmUD));
    
-    delay(4); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
+    delay(3); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
     delayMicroseconds(1000 * sc);
   }
   
@@ -352,10 +357,10 @@ void setServos() {
       t = 1;
     else
       t = 1.0 * i / (n - 1);
-    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 4 + 1;
+    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
     servoLR.writeMicroseconds(round(t * newPwmLR + (1-t) * pwmLR));
     //delayMicroseconds(round(1000) * sc);
-    delay(8);
+    delay(9);
     delayMicroseconds(1000 * sc);
     
   }
@@ -389,86 +394,100 @@ void capturing() {
       set_uds = down + (up - down) * 1.0 * y / (set_row - 1);
 
       setServos();
-      int ret = waiting(500);
-      if (ret == -1) return;
-      for (int k = 0; k < hdr[set_hdr]; k++) {
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setCursor(2, 20);
-        sprintf(tmp, "LR: %+3d", round(set_lrs));
-        display.println(tmp);
-        display.setCursor(2, 28);
-        sprintf(tmp, "UD: %+3d", round(set_uds));
-        display.println(tmp);
-  
-        display.setCursor(2, 36);
-        sprintf(tmp, "N : %d/%d", count, n);
-        display.println(tmp);
-  
-        display.setCursor(16, 0);
-        display.setTextSize(2);
-        sprintf(tmp, "%2d%%", count * 100 / n);
-        display.println(tmp);
-        display.display();
-        
-        releaseShutter();
-        count ++;
-        
-        int ret = waiting(1000);
-        if (ret == -1)
+      if ((hdr[set_hdr] == 1 && waiting(500) == -1)
+       || (hdr[set_hdr] > 1 && waiting(2000) == -1))
           return;
-      
-      }
+      //for (int k = 0; k < hdr[set_hdr]; k++) {
+      count += hdr[set_hdr];
+      if (hdr[set_hdr] == 1)
+        releaseShutter(10);
+      else
+        releaseShutter(2000);
+        
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(2, 20);
+      sprintf(tmp, "LR: %+3d", round(set_lrs));
+      display.println(tmp);
+      display.setCursor(2, 28);
+      sprintf(tmp, "UD: %+3d", round(set_uds));
+      display.println(tmp);
+
+      display.setCursor(2, 36);
+      sprintf(tmp, "N : %d/%d", count, n);
+      display.println(tmp);
+
+      display.setCursor(16, 0);
+      display.setTextSize(2);
+      sprintf(tmp, "%2d%%", count * 100 / n);
+      display.println(tmp);
+      display.display();
+
+     // }
+      if (waiting(200) == -1)
+          return;
     }
   }
+  set_lrs = 0;
+  set_uds = -90;
+  setServosInstant();
 }
+
+
 void loop() {
   if (useota)
     ArduinoOTA.handle();
   
   char tmp[16];
-  
-  int v1 = analogRead(A0);
-  int v2 = digitalRead(D4);
-  int up = 0, down = 0;
 
-  if (v1_state == 0) {
-    if (v1 < 300) { 
-      up = 1;
-      v1_state = millis();
-    } else if (v1 > 700) {
-      down = 1;
-      v1_state = millis();
-    }
-  } else if (v1 > 400 && v1 < 600) {
-    v1_state = 0;
-  } else if (millis() - v1_state > 800) {
-    if (v1 < 300) { 
-      up = 1;
-      v1_state = millis() - 780;
-    } else if (v1 > 700) {
-      down = 1;
-      v1_state = millis() - 780;
+  digitalWrite(D5, HIGH);
+  delay(10);
+  int v[2];
+  v[0] = analogRead(A0);
+  digitalWrite(D5, LOW);
+  delay(10);
+  v[1] = analogRead(A0);
+
+  if (abs(v[0] - 500) > abs(v[1] - 500))
+    v[1] = 500;
+  else 
+    v[0] = 500;
+  char but[2][2] = {0};
+  
+  for (int i = 0; i < 2; i++) {
+    if (v_state[i] == 0) {
+      if (v[i] < 50) { 
+        but[i][0] = 1;
+        v_state[i] = millis();
+      } else if (v[i] > 950) {
+        but[i][1] = 1;
+        v_state[i] = millis();
+      }
+    } else if (v[i] > 200 && v[i] < 800) {
+      v_state[i] = 0;
+    } else if (i == 1 && millis() - v_state[i] > 800) {
+      if (v[i] < 50) { 
+        but[i][0] = 1;
+        v_state[i] = millis() - 780;
+      } else if (v[i] > 950) {
+        but[i][1] = 1;
+        v_state[i] = millis() - 780;
+      }
     }
   }
+  char up = but[1][0], down = but[1][1], left = but[0][1], right = but[0][0];  
 
-  if (v2 == 0) { // move right
-    if (v2_state == 0) {
-      menuId = (menuId + 1) % menuNum;
-      v2_state = millis();
-    }
-    //if (millis() - v2_state > 400) {
-    //  menuId = 0;
-    //}
-  } else {
-    v2_state = 0;
+  if (right) {
+    menuId = (menuId + 1) % menuNum;
+  } else if (left) {
+    menuId = (menuNum + menuId - 1) % menuNum;
   }
 
   int menu = menuOrder[menuId];
   if (menu == 0) { // Capture
     if (up) {
-      while (v1 < 400) {
-        v1 = analogRead(A0);
+      while (v[1] < 400) {
+        v[1] = analogRead(A0);
         delay(10);
       }
       capturing();
@@ -543,8 +562,8 @@ void loop() {
      setServos();
   } else if (menu == 9) { // OTA Update
     if (up) {
-      while (v1 < 400) {
-        v1 = analogRead(A0);
+      while (v[1] < 400) {
+        v[1] = analogRead(A0);
         delay(10);
       }
       ota();
