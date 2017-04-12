@@ -26,8 +26,9 @@ int menuOrder[] = {
   //5, // LOW
   //6, // Hi
   7, // UD-S
-  8 // LR-S
-  //9  // OTA
+  8, // LR-S
+  9 // Sweep
+  // 10, 11 // debug lr servo
   };
 int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
 
@@ -49,11 +50,12 @@ int set_hi = 75;
 int set_row = 2;
 int set_col = 6;
 
-float set_uds = -90;
+float set_uds = 0;
 float set_lrs = 0;
 int set_move = 0;
 Servo servoUD, servoLR; 
 
+int debug_lr_servo = 800;
 
 int pwmUD = -1, pwmLR = -1;
 
@@ -135,32 +137,6 @@ void ota() {
 }
 
 
-void setup() {
-  Serial.begin(9600);  
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
-  display.clearDisplay();
-  niceMessage("Starting");
-  //delay(1000);
-  pinMode(D4, INPUT_PULLUP);
-  if (analogRead(A0) < 300) {
-    useota = 1;
-    ota();
-  }
-  
-  servoUD.attach(D7);
-  servoLR.attach(D8);
-  //setServos();
-  setServosInstant();
-
-  pinMode(D5, OUTPUT);
-  pinMode(D6, OUTPUT);
-//  uint8_t a = 123;
- // EEPROM.begin(512);
-  //EEPROM.write(0, a);
- // niceMessage(EEPROM.read(0));
- // while(1) ;
-  
-}
 
 
 void niceMessage(char *str) {
@@ -208,21 +184,28 @@ void drawNumber(int v) {
     dig = 1;
   else if (v < 100)
     dig = 2;
-  else 
+  else if (v < 1000)
     dig = 3;
-    
-  if (dig == 1)
-    display.setCursor(24, 27);
-  else if (dig == 2)
-    display.setCursor(16, 27);
-  else if (dig == 3)
-    display.setCursor(8, 27);
+  else if (v < 10000)
+    dig = 4;
+
   display.setTextSize(3);
+  if (dig == 1) {
+    display.setCursor(24, 27);
+  } else if (dig == 2) {
+    display.setCursor(16, 27);
+  } else if (dig == 3) {
+    display.setCursor(8, 27);
+  } else if (dig == 4) {
+    display.setTextSize(2);
+    display.setCursor(8, 27);
+  }
+  
   char tmp[8];
   sprintf(tmp, "%d", v);
   display.println(tmp);
 }
-void drawMenu() {
+void drawMenu(int debug=-1) {
   char tmp[16];
   display.setTextColor(WHITE);
   display.clearDisplay();
@@ -259,13 +242,31 @@ void drawMenu() {
     drawHeader("LR-S");
     drawNumber(set_lrs);
   } else if (menu == 9) {
-    drawHeader("OTA");
-    display.setTextSize(2);
-    display.setCursor(9, 34);
-    display.println("Link");
-    display.fillTriangle(28, 31, 34, 31, 31, 28, WHITE); 
+    drawHeader("Sweep");
+    display.setCursor(0, 34);
+    display.println("Start");
+    display.fillTriangle(28, 33, 34, 33, 31, 30, WHITE); 
+  } else if (menu == 10 || menu == 11) {
+    drawHeader("LR-D");
+    drawNumber(debug_lr_servo);
+  }
+
+  if (debug != -1) {
+    display.setTextSize(1);
+    display.setCursor(0, 27);
+     char tmps[16];
+    sprintf(tmps, "%d", debug);
+    display.println(tmps);
   }
   display.display();
+}
+
+void waitTillNeutral() {
+  int v = analogRead(A0);
+  while (v < 400 || v > 600) {
+    delay(10);
+    v = analogRead(A0);
+  }
 }
 
 int waiting(int mil) {
@@ -319,19 +320,28 @@ void releaseShutter(int t) {
   //digitalWrite(D5, LOW);
   digitalWrite(D6, LOW);
 }
+
+int getPWMLR(int lr) {
+  return map(lr, 0, 360, 880, 2050);
+}
+
+int getPWMUD(int ud) {
+  return map(ud + 90, 0, 180, 870, 2135);
+}
+
 void setServosInstant() {
-  pwmUD = map(set_uds + 90, 0, 180, 870, 2135);
-  pwmLR = map(set_lrs, 0, 390, 870, 2130);
+  pwmUD = getPWMUD(set_uds);
+  pwmLR = getPWMLR(set_lrs);
   servoUD.writeMicroseconds(pwmUD);
   servoLR.writeMicroseconds(pwmLR);
 }
-void setServos() {
-  char tmp[8];
-  // set_uds = -86 is fully down
-  //int newPwmUD = map(set_uds + 90 + 4, 0, 180, 870, 2130);
-  int newPwmUD = map(set_uds + 90, 0, 180, 870, 2135);
-  int newPwmLR = map(set_lrs, 0, 390, 870, 2130);
 
+// base delay for UD, LR
+void setServos(int baseUD = 0, int baseLR = 0) {
+  char tmp[8];
+  int newPwmUD = getPWMUD(set_uds);
+  int newPwmLR = getPWMLR(set_lrs);
+  
   if (pwmUD == -1) pwmUD = 870;
   if (pwmLR == -1) pwmLR = 870;
   int n;
@@ -346,7 +356,7 @@ void setServos() {
     float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
     servoUD.writeMicroseconds(round(t * newPwmUD + (1-t) * pwmUD));
    
-    delay(3); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
+    delay(3 + baseUD); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
     delayMicroseconds(1000 * sc);
   }
   
@@ -360,7 +370,7 @@ void setServos() {
     float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
     servoLR.writeMicroseconds(round(t * newPwmLR + (1-t) * pwmLR));
     //delayMicroseconds(round(1000) * sc);
-    delay(9);
+    delay(9 + baseLR);
     delayMicroseconds(1000 * sc);
     
   }
@@ -433,6 +443,26 @@ void capturing() {
   setServosInstant();
 }
 
+void sweeping() {
+  set_lrs = 0;
+  set_uds = 0;
+  setServos();
+  delay(2000);
+
+  int p0 = getPWMLR(0);
+  int p1 = getPWMLR(360);
+  int n = p1 - p0;
+
+  int deg = 5;
+
+  for (int t = 0; t < 360; t+=deg) {
+    set_lrs = t;
+    setServos(30, 30);
+    //setServos();
+    delay(1000);
+    releaseShutter(500);
+  }
+}
 
 void loop() {
   if (useota)
@@ -456,20 +486,20 @@ void loop() {
   
   for (int i = 0; i < 2; i++) {
     if (v_state[i] == 0) {
-      if (v[i] < 50) { 
+      if (v[i] < 100) { 
         but[i][0] = 1;
         v_state[i] = millis();
-      } else if (v[i] > 950) {
+      } else if (v[i] > 900) {
         but[i][1] = 1;
         v_state[i] = millis();
       }
     } else if (v[i] > 200 && v[i] < 800) {
       v_state[i] = 0;
     } else if (i == 1 && millis() - v_state[i] > 800) {
-      if (v[i] < 50) { 
+      if (v[i] < 100) { 
         but[i][0] = 1;
         v_state[i] = millis() - 780;
-      } else if (v[i] > 950) {
+      } else if (v[i] > 900) {
         but[i][1] = 1;
         v_state[i] = millis() - 780;
       }
@@ -486,10 +516,7 @@ void loop() {
   int menu = menuOrder[menuId];
   if (menu == 0) { // Capture
     if (up) {
-      while (v[1] < 400) {
-        v[1] = analogRead(A0);
-        delay(10);
-      }
+      waitTillNeutral();
       capturing();
     }
   } else if (menu == 1) { // Move
@@ -551,27 +578,82 @@ void loop() {
      setServos();
   } else if (menu == 8) { // lrs
     int change = 0;
-    if (down && set_lrs > 0) {
+    if (down && set_lrs > -10) {
       set_lrs-= 5;
       change = 1;
-    } else if (up && set_lrs < 360) {
+    } else if (up && set_lrs < 400) {
       set_lrs+= 5;
       change = 1;
     }
     if (change)
      setServos();
-  } else if (menu == 9) { // OTA Update
+  } else if (menu == 9) { // Sweep
     if (up) {
-      while (v[1] < 400) {
-        v[1] = analogRead(A0);
-        delay(10);
-      }
-      ota();
+      waitTillNeutral();
+      sweeping();
     }
+  } else if (menu == 10) { // debug lr servo
+    int change = 0;
+    if (down) {
+      debug_lr_servo -=10;
+      change = 1;
+    } else if (up) {
+      debug_lr_servo +=10;
+      change = 1;
+    }
+    if (change)
+      servoLR.writeMicroseconds(debug_lr_servo);
+  } else if (menu == 11) { // debug lr servo
+    int change = 0;
+    if (down) {
+      debug_lr_servo --;
+      change = 1;
+    } else if (up) {
+      debug_lr_servo ++;
+      change = 1;
+    }
+    if (change)
+      servoLR.writeMicroseconds(debug_lr_servo);
   }
   //sprintf(tmp, "%d %d", v1, v2);
   //niceMessage(tmp);
   //delay(1);
+
+      
+  //drawMenu(v[0]);
   drawMenu();
+}
+
+
+void setup() {
+  Serial.begin(9600);  
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
+  display.clearDisplay();
+  niceMessage("Starting");
+  //delay(1000);
+  pinMode(D4, INPUT_PULLUP);
+  if (analogRead(A0) < 300) {
+    useota = 1;
+    ota();
+  }
+  
+  servoUD.attach(D7);
+  servoLR.attach(D8);
+
+  pwmUD = getPWMUD(set_uds);
+  pwmLR = getPWMLR(set_lrs);
+  setServos();
+
+  
+  //setServosInstant();
+
+  pinMode(D5, OUTPUT);
+  pinMode(D6, OUTPUT);
+//  uint8_t a = 123;
+ // EEPROM.begin(512);
+  //EEPROM.write(0, a);
+ // niceMessage(EEPROM.read(0));
+ // while(1) ;
+  
 }
 
