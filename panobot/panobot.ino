@@ -19,7 +19,7 @@ unsigned long v_state[2];
 int menuId = 0;
 int menuOrder[] = {
   0, // Home
-  1, // Move
+  //1, // Move
   2, // HDR
   3, // Row
   4, // Col
@@ -27,8 +27,9 @@ int menuOrder[] = {
   //6, // Hi
   7, // UD-S
   8, // LR-S
-  9 // Sweep
+  9, // Sweep
   // 10, 11 // debug lr servo
+  12, // sweep delay
   };
 int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
 
@@ -49,6 +50,7 @@ int set_low = 50;
 int set_hi = 75;
 int set_row = 2;
 int set_col = 6;
+int set_sweep_delay = 1000;
 
 float set_uds = 0;
 float set_lrs = 0;
@@ -62,6 +64,7 @@ int pwmUD = -1, pwmLR = -1;
 const char* ssid = "sushi";
 const char* password = "12345687";
 
+int holdCount = 0;
 int wifiConnected = 0;
 
 int devmode = 1; // connect wifi first
@@ -249,6 +252,9 @@ void drawMenu(int debug=-1) {
   } else if (menu == 10 || menu == 11) {
     drawHeader("LR-D");
     drawNumber(debug_lr_servo);
+  } else if (menu == 12) {
+    drawHeader("Delay");
+    drawNumber(set_sweep_delay);
   }
 
   if (debug != -1) {
@@ -444,6 +450,8 @@ void capturing() {
 }
 
 void sweeping() {
+  char tmp[8];
+
   set_lrs = 0;
   set_uds = 0;
   setServos();
@@ -459,8 +467,30 @@ void sweeping() {
     set_lrs = t;
     setServos(30, 30);
     //setServos();
-    delay(1000);
-    releaseShutter(500);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(2, 20);
+    sprintf(tmp, "LR: %+3d", round(set_lrs));
+    display.println(tmp);
+    display.setCursor(2, 28);
+    sprintf(tmp, "UD: %+3d", round(set_uds));
+    display.println(tmp);
+
+    //display.setCursor(2, 36);
+    //sprintf(tmp, "N : %d/%d", count, n);
+    //display.println(tmp);
+
+    display.setCursor(16, 0);
+    display.setTextSize(2);
+    sprintf(tmp, "%2d%%", t * 100 / 360);
+    display.println(tmp);
+    display.display();
+
+    if (waiting(set_sweep_delay) == -1)
+      return;
+      
+    releaseShutter(100);
+      
   }
 }
 
@@ -473,6 +503,7 @@ void loop() {
   digitalWrite(D5, HIGH);
   delay(10);
   int v[2];
+  
   v[0] = analogRead(A0);
   digitalWrite(D5, LOW);
   delay(10);
@@ -495,14 +526,16 @@ void loop() {
       }
     } else if (v[i] > 200 && v[i] < 800) {
       v_state[i] = 0;
+      holdCount = 0;
     } else if (i == 1 && millis() - v_state[i] > 800) {
       if (v[i] < 100) { 
         but[i][0] = 1;
-        v_state[i] = millis() - 780;
+        v_state[i] = millis() - 790;
       } else if (v[i] > 900) {
         but[i][1] = 1;
-        v_state[i] = millis() - 780;
+        v_state[i] = millis() - 790;
       }
+      holdCount++;
     }
   }
   char up = but[1][0], down = but[1][1], left = but[0][1], right = but[0][0];  
@@ -567,22 +600,38 @@ void loop() {
       set_hi+= 5;
   } else if (menu == 7) { // uds
     int change = 0;
-    if (down && set_uds > -90) {
-      set_uds--;
+    int cstep = 1;
+
+    if (holdCount > 18)
+      cstep = 10;
+    else if (holdCount > 12)
+      cstep = 5;
+    else if (holdCount > 6)
+      cstep = 2;
+    
+    if (down && set_uds > -100) {
+      set_uds -= cstep;
       change = 1;
-    } else if (up && set_uds < 90) {
-      set_uds++;
+    } else if (up && set_uds < 100) {
+      set_uds += cstep;
       change = 1;
     }
     if (change)
      setServos();
   } else if (menu == 8) { // lrs
     int change = 0;
+    int cstep = 5;
+    
+    if (holdCount > 16)
+      cstep = 20;
+    else if (holdCount > 8)
+      cstep = 10;
+      
     if (down && set_lrs > -10) {
-      set_lrs-= 5;
+      set_lrs-= cstep;
       change = 1;
     } else if (up && set_lrs < 400) {
-      set_lrs+= 5;
+      set_lrs+= cstep;
       change = 1;
     }
     if (change)
@@ -614,6 +663,12 @@ void loop() {
     }
     if (change)
       servoLR.writeMicroseconds(debug_lr_servo);
+  } else if (menu == 12) { // set sweep delay
+    if (down) {
+      set_sweep_delay -= 100;
+    } else if (up) {
+      set_sweep_delay += 100;
+    }
   }
   //sprintf(tmp, "%d %d", v1, v2);
   //niceMessage(tmp);
