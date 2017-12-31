@@ -28,8 +28,9 @@ int menuOrder[] = {
   7, // UD-S
   8, // LR-S
   9, // Sweep
-  // 10, 11 // debug lr servo
-  12, // sweep delay
+//  10, 11, // debug lr servo
+//  12, 13, // debug ud servo
+  14, // sweep delay
   };
 int menuNum = sizeof(menuOrder) / sizeof(menuOrder[0]);
 
@@ -58,11 +59,12 @@ int set_move = 0;
 Servo servoUD, servoLR; 
 
 int debug_lr_servo = 800;
+int debug_ud_servo = 800;
 
 int pwmUD = -1, pwmLR = -1;
 
-const char* ssid = "sushi";
-const char* password = "12345687";
+const char* ssid = "Chirashi";
+const char* password = "bangkokthailand";
 
 int holdCount = 0;
 int wifiConnected = 0;
@@ -252,7 +254,10 @@ void drawMenu(int debug=-1) {
   } else if (menu == 10 || menu == 11) {
     drawHeader("LR-D");
     drawNumber(debug_lr_servo);
-  } else if (menu == 12) {
+  } else if (menu == 12 || menu == 13) {
+    drawHeader("UD-D");
+    drawNumber(debug_ud_servo);
+  } else if (menu == 14) {
     drawHeader("Delay");
     drawNumber(set_sweep_delay);
   }
@@ -332,7 +337,8 @@ int getPWMLR(int lr) {
 }
 
 int getPWMUD(int ud) {
-  return map(ud + 90, 0, 180, 870, 2135);
+  //return map(ud + 90, 0, 180, 870, 2135);
+  return map(ud + 90, 2, 180, 870, 2100);
 }
 
 void setServosInstant() {
@@ -343,7 +349,7 @@ void setServosInstant() {
 }
 
 // base delay for UD, LR
-void setServos(int baseUD = 0, int baseLR = 0) {
+void setServos(int baseUD = 0, int baseLR = 0, int enableUD = 1, int enableLR = 1) {
   char tmp[8];
   int newPwmUD = getPWMUD(set_uds);
   int newPwmLR = getPWMLR(set_lrs);
@@ -352,37 +358,40 @@ void setServos(int baseUD = 0, int baseLR = 0) {
   if (pwmLR == -1) pwmLR = 870;
   int n;
   n = fabs(newPwmUD - pwmUD) + 1;
-  
-  for (int i = 0; i < n; i++) {
-    float t;
-    if (n == 1) 
-      t = 1;
-    else
-      t = 1.0 * i / (n - 1);
-    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
-    servoUD.writeMicroseconds(round(t * newPwmUD + (1-t) * pwmUD));
-   
-    delay(3 + baseUD); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
-    delayMicroseconds(1000 * sc);
+  if (enableUD) {
+    for (int i = 0; i < n; i++) {
+      float t;
+      if (n == 1) 
+        t = 1;
+      else
+        t = 1.0 * i / (n - 1);
+      float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
+      servoUD.writeMicroseconds(round(t * newPwmUD + (1-t) * pwmUD));
+     
+      delay(3 + baseUD); // so that watchdog is fed. https://github.com/esp8266/Arduino/issues/2240
+      delayMicroseconds(1000 * sc);
+    }
+    pwmUD = newPwmUD;
   }
-  
-  n = fabs(newPwmLR - pwmLR) + 1;
-  for (int i = 0; i < n; i++) {
-    float t = 1.0 * i / (n - 1);
-    if (n == 1) 
-      t = 1;
-    else
-      t = 1.0 * i / (n - 1);
-    float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
-    servoLR.writeMicroseconds(round(t * newPwmLR + (1-t) * pwmLR));
-    //delayMicroseconds(round(1000) * sc);
-    delay(9 + baseLR);
-    delayMicroseconds(1000 * sc);
     
+  n = fabs(newPwmLR - pwmLR) + 1;
+  if (enableLR) {
+    for (int i = 0; i < n; i++) {
+      float t = 1.0 * i / (n - 1);
+      if (n == 1) 
+        t = 1;
+      else
+        t = 1.0 * i / (n - 1);
+      float sc = (cos(t * 2 * 3.141592653) + 1)/2 * 3 + 1;
+      servoLR.writeMicroseconds(round(t * newPwmLR + (1-t) * pwmLR));
+      //delayMicroseconds(round(1000) * sc);
+      delay(9 + baseLR);
+      delayMicroseconds(1000 * sc);
+    }
+    pwmLR = newPwmLR;
   }
   
-  pwmUD = newPwmUD;
-  pwmLR = newPwmLR;
+  
   //servoUD.writeMicroseconds(pwmUD);
   //servoLR.writeMicroseconds(pwmLR);
 }
@@ -454,7 +463,7 @@ void sweeping() {
 
   set_lrs = 0;
   set_uds = 0;
-  setServos();
+  setServos(0, 0, 0);
   delay(2000);
 
   int p0 = getPWMLR(0);
@@ -465,7 +474,7 @@ void sweeping() {
 
   for (int t = 0; t < 360; t+=deg) {
     set_lrs = t;
-    setServos(30, 30);
+    setServos(30, 30, 0);
     //setServos();
     display.clearDisplay();
     display.setTextSize(1);
@@ -663,7 +672,29 @@ void loop() {
     }
     if (change)
       servoLR.writeMicroseconds(debug_lr_servo);
-  } else if (menu == 12) { // set sweep delay
+  } else if (menu == 12) { // debug ud servo
+    int change = 0;
+    if (down) {
+      debug_ud_servo -=10;
+      change = 1;
+    } else if (up) {
+      debug_ud_servo +=10;
+      change = 1;
+    }
+    if (change)
+      servoUD.writeMicroseconds(debug_ud_servo);
+  } else if (menu == 13) { // debug ud servo
+    int change = 0;
+    if (down) {
+      debug_ud_servo --;
+      change = 1;
+    } else if (up) {
+      debug_ud_servo ++;
+      change = 1;
+    }
+    if (change)
+      servoUD.writeMicroseconds(debug_ud_servo);
+  } else if (menu == 14) { // set sweep delay
     if (down) {
       set_sweep_delay -= 100;
     } else if (up) {
